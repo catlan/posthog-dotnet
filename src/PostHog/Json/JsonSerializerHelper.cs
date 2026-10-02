@@ -5,16 +5,30 @@ namespace PostHog.Json;
 
 internal static class JsonSerializerHelper
 {
-    internal static readonly JsonSerializerOptions Options = new()
+    internal static readonly JsonSerializerOptions Options = CreateOptions();
+
+    static JsonSerializerOptions CreateOptions()
     {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        PropertyNameCaseInsensitive = true,
-        Converters =
+        var options = new JsonSerializerOptions
         {
-            new ReadOnlyCollectionJsonConverterFactory(),
-            new ReadOnlyDictionaryJsonConverterFactory()
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            PropertyNameCaseInsensitive = true,
+        };
+#if NET8_0_OR_GREATER
+        // Native AOT can't serialize by reflection (it is off by default) or make the converter factories' generic
+        // converters: the source-generated context covers capturing events, and System.Text.Json's own support for
+        // read-only collections and dictionaries stands in for the factories.
+        if (!System.Runtime.CompilerServices.RuntimeFeature.IsDynamicCodeSupported)
+        {
+            options.TypeInfoResolver = PostHogJsonContext.Default;
+            options.Converters.Add(new StringOrInt32ValueConverter());
+            return options;
         }
-    };
+#endif
+        options.Converters.Add(new ReadOnlyCollectionJsonConverterFactory());
+        options.Converters.Add(new ReadOnlyDictionaryJsonConverterFactory());
+        return options;
+    }
 
     static readonly JsonSerializerOptions IndentedOptions = new(Options)
     {
